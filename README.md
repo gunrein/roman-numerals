@@ -6,9 +6,43 @@ https://en.wikipedia.org/wiki/Roman_numerals.
 
 ## CLI
 
+Basic usage:
+
+```shell
+# Print general help information
+roman-numerals help
+```
+
+```shell
+# Print the help info for `convert`
+roman-numerals help convert
+```
+
+```shell
+# Print the help info for `repl`
+roman-numerals help repl
+```
+
+```shell
+# Print the version
+roman-numerals --version
+```
+
+### REPL (read-eval-print-loop)
+
+Use the REPL to interactively convert one value at a time.
+
+```shell
+roman-numerals repl
+```
+
+### Convert
+
 Use the CLI to convert a single value at a time. Some examples:
-- `roman-numerals convert 4` - outputs `IV`
-- `roman-numerals convert IV` - outputs `4`
-- `roman-numerals help` - print general help information
-- `roman-numerals help convert` - print the help info for `convert`
-- `roman-numerals --version` - print the version
+
+```shell
+# Outputs IV
+roman-numerals convert 4
+# Outputs 4
+roman-numerals IV
+```
