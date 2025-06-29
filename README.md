@@ -43,6 +43,7 @@ Use the CLI to convert a single value at a time. Some examples:
 ```shell
 # Outputs IV
 roman-numerals convert 4
+
 # Outputs 4
-roman-numerals IV
+roman-numerals convert IV
 ```
