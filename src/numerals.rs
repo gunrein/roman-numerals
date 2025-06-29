@@ -1,8 +1,12 @@
+/// An implementation of standard form Roman numerals based on the definitions at
+/// https://en.wikipedia.org/wiki/Roman_numerals
+/// There are three main ways to use the module:
+/// - Parse from a `String` or `&str`, e.g. `let result = "MIV".parse::<RomanNumeral>();` or `let result: RomanNumeralResult = "MIV".parse();`
+/// - Convert from an `i32`, e.g. `let result: RomanNumeralResult = 1_044.try_into();`
+/// - Display from a `RomanNumeral`
 use crate::numerals::RomanNumeral::*;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-/// Roman numerals based on the definitions at
-/// https://en.wikipedia.org/wiki/Roman_numerals
 use std::str::FromStr;
 use thiserror::Error;
 use unicode_segmentation::UnicodeSegmentation;
@@ -11,29 +15,39 @@ use unicode_segmentation::UnicodeSegmentation;
 pub enum RomanNumeralError {
     #[error("Not a Roman numeral: {0}")]
     NotRomanNumeral(String),
-    #[error("Compound numeral has errors")]
-    NumeralsHasError(Vec<RomanNumeralError>),
+    #[error("{0} is greater than 3,999, the largest value a Roman numeral can have.")]
+    ValueTooGreat(String),
+    #[error("{0} is less than 1, the smallest Roman numeral value can have.")]
+    ValueTooSmall(String),
+    #[error("Numerals are out of order: {0}")]
+    NumeralsOutOfOrder(String),
+    #[error("Errors with Roman numeral")]
+    NumeralHasErrors(Vec<RomanNumeralError>),
 }
 
 pub type RomanNumeralResult = Result<RomanNumeral, RomanNumeralError>;
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+/// The abstract representation of Roman numerals. Individual numerals and subtractive forms
+/// are both explicitly represented so that simplification can be done once.
+/// Compound numerals can be arbitrarily nested structurally but are flattened when parsing or
+/// converting into a single level Compound numeral.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum RomanNumeral {
-    // Individual numerals
+    // Individual numerals and subtractive forms in order from the smallest value to the greatest
+    // value. This order is important to the implementation.
     I,
-    V,
-    X,
-    L,
-    C,
-    D,
-    M,
-    // Subtractive forms
     IV,
+    V,
     IX,
+    X,
     XL,
+    L,
     XC,
+    C,
     CD,
+    D,
     CM,
+    M,
     // Compound numeral
     Compound(Vec<RomanNumeral>),
 }
@@ -58,7 +72,7 @@ impl FromStr for RomanNumeral {
             flatten_numeral(&Compound(numerals), trimmed)
         } else {
             let unwrapped_errors = errors.into_iter().map(|e| e.unwrap_err()).collect();
-            Err(RomanNumeralError::NumeralsHasError(unwrapped_errors))
+            Err(RomanNumeralError::NumeralHasErrors(unwrapped_errors))
         }
     }
 }
@@ -86,17 +100,19 @@ impl TryFrom<i32> for RomanNumeral {
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         // Check bounds for standard form of Roman numerals
-        if !(1..=3999).contains(&value) {
-            Err(RomanNumeralError::NotRomanNumeral(value.to_string()))
+        if value < 1 {
+            Err(RomanNumeralError::ValueTooSmall(value.to_string()))
+        } else if value > 3_999 {
+            Err(RomanNumeralError::ValueTooGreat(value.to_string()))
         } else {
             let mut numeral = Vec::new();
 
-            let thousands = value / 1000;
+            let thousands = value / 1_000;
             for _ in 0..thousands {
                 numeral.push(M);
             }
 
-            let hundreds = (value - (thousands * 1000)) / 100;
+            let hundreds = (value - (thousands * 1_000)) / 100;
             match hundreds {
                 0 => {} // no op
                 1 => numeral.push(C),
@@ -177,6 +193,7 @@ fn merge_subtractive_forms(ok_numerals: Vec<RomanNumeral>) -> Vec<RomanNumeral> 
     let mut numerals_iter = ok_numerals.into_iter().peekable();
 
     let mut merged_numerals: Vec<RomanNumeral> = Vec::new();
+    // A while loop is used to avoid ownership complications with for loops
     while let Some(numeral) = numerals_iter.next() {
         if let Some(next) = numerals_iter.peek() {
             if let Some(merged) = subtractive_forms(&numeral, next) {
@@ -196,6 +213,7 @@ fn merge_subtractive_forms(ok_numerals: Vec<RomanNumeral>) -> Vec<RomanNumeral> 
     merged_numerals
 }
 
+/// Constant function for converting pairs of numerals into subtractive forms when there is a match.
 fn subtractive_forms(numeral: &RomanNumeral, next: &RomanNumeral) -> Option<RomanNumeral> {
     match (numeral, next) {
         (I, V) => Some(IV),
@@ -255,6 +273,8 @@ fn into_string(numeral: &RomanNumeral) -> String {
     }
 }
 
+/// Flattens the given numeral into either a single unitary numeral or a single Compound
+/// numeral with no nested Compound numerals.
 fn flatten_numeral(numeral: &RomanNumeral, input: &str) -> RomanNumeralResult {
     match numeral {
         I | V | X | L | C | D | M | IV | IX | XL | XC | CD | CM => Ok(numeral.clone()),
@@ -269,6 +289,18 @@ fn flatten_numeral(numeral: &RomanNumeral, input: &str) -> RomanNumeralResult {
 
             let merged = merge_subtractive_forms(flattened);
 
+            // Check that no numerals are out of order. This must be done after the subtractive
+            // forms are merged.
+            let mut merged_iter = merged.clone().into_iter().peekable();
+            while let Some(numeral) = merged_iter.next() {
+                if let Some(next) = merged_iter.peek() {
+                    // Check that the numerals are in order
+                    if &numeral < next {
+                        return Err(RomanNumeralError::NumeralsOutOfOrder(format!("{} must come before {}", next, numeral)))
+                    }
+                }
+            }
+
             if merged.is_empty() {
                 Err(RomanNumeralError::NotRomanNumeral(input.to_string()))
             } else if merged.len() == 1 {
@@ -282,6 +314,7 @@ fn flatten_numeral(numeral: &RomanNumeral, input: &str) -> RomanNumeralResult {
     }
 }
 
+/// Recursive helper for flattening Compound numerals
 fn flatten_helper(numeral: &RomanNumeral) -> Vec<&RomanNumeral> {
     match numeral {
         I | V | X | L | C | D | M | IV | IX | XL | XC | CD | CM => vec![numeral],
@@ -373,18 +406,31 @@ mod tests {
 
     #[test]
     fn one_thousand() {
-        check_numeral("M", M, 1000);
+        check_numeral("M", M, 1_000);
     }
 
     #[test]
     fn one_thousand_six_hundred_sixty_six() {
         // Tests all singular numerals in one pass
-        check_numeral("MDCLXVI", Compound(vec![M, D, C, L, X, V, I]), 1666);
+        check_numeral("MDCLXVI", Compound(vec![M, D, C, L, X, V, I]), 1_666);
     }
 
     #[test]
     fn largest_roman_numeral_in_standard_form() {
-        check_numeral("MMMCMXCIX", Compound(vec![M, M, M, CM, XC, IX]), 3999);
+        check_numeral("MMMCMXCIX", Compound(vec![M, M, M, CM, XC, IX]), 3_999);
+    }
+
+    #[test]
+    fn out_of_order() {
+        let e = "MIVM".parse::<RomanNumeral>().unwrap_err();
+        match e {
+            RomanNumeralError::NumeralsOutOfOrder(value) if value == "M must come before IV".to_string() => {} // correct
+            RomanNumeralError::NumeralHasErrors(_) => panic!("Incorrect error type"),
+            RomanNumeralError::NotRomanNumeral(value)
+            | RomanNumeralError::ValueTooGreat(value)
+            | RomanNumeralError::ValueTooSmall(value)
+            | RomanNumeralError::NumeralsOutOfOrder(value) => panic!("Incorrect error type {value}"),
+        }
     }
 
     #[test]
@@ -392,19 +438,23 @@ mod tests {
         let result: RomanNumeralResult = 0.try_into();
         let e = result.unwrap_err();
         match e {
-            RomanNumeralError::NotRomanNumeral(value) if value == "0".to_string() => {} // correct
-            RomanNumeralError::NotRomanNumeral(value) => panic!("Incorrect value {value}"),
-            RomanNumeralError::NumeralsHasError(_) => {
-                panic!("Incorrect error type")
-            }
+            RomanNumeralError::ValueTooSmall(value) if value == "0".to_string() => {} // correct
+            RomanNumeralError::ValueTooSmall(value) => panic!("Incorrect value {value}"),
+            RomanNumeralError::NumeralHasErrors(_)
+            | RomanNumeralError::ValueTooGreat(_)
+            | RomanNumeralError::NotRomanNumeral(_)
+            | RomanNumeralError::NumeralsOutOfOrder(_) => panic!("Incorrect error type"),
         }
 
         let result: RomanNumeralResult = 4000.try_into();
         let e = result.unwrap_err();
         match e {
-            RomanNumeralError::NotRomanNumeral(value) if value == "4000".to_string() => {} // correct
-            RomanNumeralError::NotRomanNumeral(value) => panic!("Incorrect value {value}"),
-            RomanNumeralError::NumeralsHasError(_) => {
+            RomanNumeralError::ValueTooGreat(value) if value == "4000".to_string() => {} // correct
+            RomanNumeralError::ValueTooGreat(value) => panic!("Incorrect value {value}"),
+            RomanNumeralError::NumeralHasErrors(_)
+            | RomanNumeralError::ValueTooSmall(_)
+            | RomanNumeralError::NotRomanNumeral(_)
+            | RomanNumeralError::NumeralsOutOfOrder(_) => {
                 panic!("Incorrect error type")
             }
         }
@@ -430,10 +480,11 @@ mod tests {
     fn check_empty_error(e: RomanNumeralError) {
         match e {
             RomanNumeralError::NotRomanNumeral(value) if value == "".to_string() => {} // correct
-            RomanNumeralError::NotRomanNumeral(value) => panic!("Incorrect value {value}"),
-            RomanNumeralError::NumeralsHasError(_) => {
-                panic!("Incorrect error type")
-            }
+            RomanNumeralError::NumeralHasErrors(_)
+            | RomanNumeralError::ValueTooGreat(_)
+            | RomanNumeralError::ValueTooSmall(_)
+            | RomanNumeralError::NotRomanNumeral(_)
+            | RomanNumeralError::NumeralsOutOfOrder(_) => panic!("Incorrect error type"),
         }
     }
 
@@ -445,7 +496,7 @@ mod tests {
 
         let e = " I Z V X L P C 🔺D M ".parse::<RomanNumeral>().unwrap_err();
         match e {
-            RomanNumeralError::NumeralsHasError(errors) => {
+            RomanNumeralError::NumeralHasErrors(errors) => {
                 assert_eq!(
                     errors,
                     vec![
@@ -463,9 +514,10 @@ mod tests {
                     ]
                 );
             }
-            RomanNumeralError::NotRomanNumeral(_) => {
-                panic!("Incorrect error type")
-            }
+            RomanNumeralError::NotRomanNumeral(_)
+            | RomanNumeralError::ValueTooGreat(_)
+            | RomanNumeralError::ValueTooSmall(_)
+            | RomanNumeralError::NumeralsOutOfOrder(_) => panic!("Incorrect error type"),
         }
     }
 }
