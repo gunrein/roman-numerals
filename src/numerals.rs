@@ -7,7 +7,7 @@ use std::str::FromStr;
 use thiserror::Error;
 use unicode_segmentation::UnicodeSegmentation;
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Clone, Error, Debug, PartialEq)]
 pub enum RomanNumeralError {
     #[error("Not a Roman numeral: {0}")]
     NotRomanNumeral(String),
@@ -17,7 +17,7 @@ pub enum RomanNumeralError {
 
 pub type RomanNumeralResult = Result<RomanNumeral, RomanNumeralError>;
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum RomanNumeral {
     // Individual numerals
     I,
@@ -49,99 +49,17 @@ impl FromStr for RomanNumeral {
                 .partition(Result::is_ok);
 
         if errors.is_empty() {
-            let mut numerals_iter = ok_numerals
-                .into_iter()
+            let numerals = ok_numerals
+                .iter()
                 // unwrap should be safe here since there are no error results in the vec based on the partition above
-                .map(|r| r.unwrap())
-                .peekable();
+                .map(|r| r.clone().unwrap())
+                .collect();
 
-            // Reduce any subtractive forms to their singular representations
-            let mut simplified_numerals: Vec<RomanNumeral> = Vec::new();
-            while let Some(numeral) = numerals_iter.next() {
-                if let Some(next) = numerals_iter.peek() {
-                    match numeral {
-                        I => {
-                            if next == &V {
-                                // Merge into a single numeral
-                                simplified_numerals.push(IV);
-                                // and consume the second numeral
-                                numerals_iter.next();
-                            } else if next == &X {
-                                // Merge into a single numeral
-                                simplified_numerals.push(IX);
-                                // and consume the second numeral
-                                numerals_iter.next();
-                            } else {
-                                simplified_numerals.push(numeral);
-                            }
-                        }
-                        X => {
-                            if next == &L {
-                                // Merge into a single numeral
-                                simplified_numerals.push(XL);
-                                // and consume the second numeral
-                                numerals_iter.next();
-                            } else if next == &C {
-                                // Merge into a single numeral
-                                simplified_numerals.push(XC);
-                                // and consume the second numeral
-                                numerals_iter.next();
-                            } else {
-                                simplified_numerals.push(numeral);
-                            }
-                        }
-                        C => {
-                            if next == &D {
-                                // Merge into a single numeral
-                                simplified_numerals.push(CD);
-                                // and consume the second numeral
-                                numerals_iter.next();
-                            } else if next == &M {
-                                // Merge into a single numeral
-                                simplified_numerals.push(CM);
-                                // and consume the second numeral
-                                numerals_iter.next();
-                            } else {
-                                simplified_numerals.push(numeral);
-                            }
-                        }
-                        // All of these cases simply add themselves
-                        V | L | D | M | IV | IX | XL | XC | CD | CM | Compound(_) => {
-                            simplified_numerals.push(numeral)
-                        }
-                    }
-                } else {
-                    // No next numeral so just add the current one
-                    simplified_numerals.push(numeral)
-                }
-            }
-
-            if simplified_numerals.is_empty() {
-                Err(RomanNumeralError::NotRomanNumeral(trimmed.to_string()))
-            } else if simplified_numerals.len() == 1 {
-                // If there is a single numeral already, just return it
-                Ok(simplified_numerals.pop().unwrap())
-            } else {
-                // Must be a compound numeral
-                Ok(Compound(simplified_numerals))
-            }
+            flatten_numeral(&Compound(numerals), trimmed)
         } else {
             let unwrapped_errors = errors.into_iter().map(|e| e.unwrap_err()).collect();
             Err(RomanNumeralError::NumeralsHasError(unwrapped_errors))
         }
-    }
-}
-
-fn parse_numeral_from_grapheme(grapheme: &str) -> RomanNumeralResult {
-    match grapheme {
-        "I" => Ok(I),
-        "V" => Ok(V),
-        "X" => Ok(X),
-        "L" => Ok(L),
-        "C" => Ok(C),
-        "D" => Ok(D),
-        "M" => Ok(M),
-        other => Err(RomanNumeralError::NotRomanNumeral(other.to_string())),
     }
 }
 
@@ -157,55 +75,9 @@ impl From<RomanNumeral> for i32 {
     }
 }
 
-fn into_i32(numeral: &RomanNumeral) -> i32 {
-    match numeral {
-        I => 1,
-        V => 5,
-        X => 10,
-        L => 50,
-        C => 100,
-        D => 500,
-        M => 1000,
-        IV => 4,
-        IX => 9,
-        XL => 40,
-        XC => 90,
-        CD => 400,
-        CM => 900,
-        Compound(numerals) => numerals
-            .iter()
-            .map(into_i32)
-            .reduce(|left, right| left + right)
-            .map_or(0, |i| i),
-    }
-}
-
 impl Display for RomanNumeral {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", into_string(self))
-    }
-}
-
-fn into_string(numeral: &RomanNumeral) -> String {
-    match numeral {
-        I => "I".into(),
-        V => "V".into(),
-        X => "X".into(),
-        L => "L".into(),
-        C => "C".into(),
-        D => "D".into(),
-        M => "M".into(),
-        IV => "IV".into(),
-        IX => "IX".into(),
-        XL => "XL".into(),
-        XC => "XC".into(),
-        CD => "CD".into(),
-        CM => "CM".into(),
-        Compound(numerals) => numerals
-            .iter()
-            .map(into_string)
-            .reduce(|left, right| format!("{left}{right}"))
-            .map_or("".into(), |s| s),
     }
 }
 
@@ -282,26 +154,146 @@ impl TryFrom<i32> for RomanNumeral {
             }
 
             // Flatten any nested Compound numerals
-            let mut flattened: Vec<RomanNumeral> =
-                numeral.iter().flat_map(flatten_numeral).collect();
+            flatten_numeral(&Compound(numeral), &value.to_string())
+        }
+    }
+}
 
-            if flattened.is_empty() {
-                Err(RomanNumeralError::NotRomanNumeral(value.to_string()))
-            } else if flattened.len() == 1 {
+fn parse_numeral_from_grapheme(grapheme: &str) -> RomanNumeralResult {
+    match grapheme {
+        "I" => Ok(I),
+        "V" => Ok(V),
+        "X" => Ok(X),
+        "L" => Ok(L),
+        "C" => Ok(C),
+        "D" => Ok(D),
+        "M" => Ok(M),
+        other => Err(RomanNumeralError::NotRomanNumeral(other.to_string())),
+    }
+}
+
+// Reduce any subtractive forms to their singular representations
+fn merge_subtractive_forms(ok_numerals: Vec<RomanNumeral>) -> Vec<RomanNumeral> {
+    let mut numerals_iter = ok_numerals.into_iter().peekable();
+
+    let mut merged_numerals: Vec<RomanNumeral> = Vec::new();
+    while let Some(numeral) = numerals_iter.next() {
+        if let Some(next) = numerals_iter.peek() {
+            if let Some(merged) = subtractive_forms(&numeral, next) {
+                // Merge the individual numerals of the subtractive form
+                merged_numerals.push(merged);
+                // and consume the second numeral
+                numerals_iter.next();
+            } else {
+                merged_numerals.push(numeral);
+            }
+        } else {
+            // No next numeral so just add the current one
+            merged_numerals.push(numeral)
+        }
+    }
+
+    merged_numerals
+}
+
+fn subtractive_forms(numeral: &RomanNumeral, next: &RomanNumeral) -> Option<RomanNumeral> {
+    match (numeral, next) {
+        (I, V) => Some(IV),
+        (I, X) => Some(IX),
+        (X, L) => Some(XL),
+        (X, C) => Some(XC),
+        (C, D) => Some(CD),
+        (C, M) => Some(CM),
+        // Avoiding default matches is strongly preferable, but in this case it seems ok.
+        _ => None,
+    }
+}
+
+fn into_i32(numeral: &RomanNumeral) -> i32 {
+    match numeral {
+        I => 1,
+        V => 5,
+        X => 10,
+        L => 50,
+        C => 100,
+        D => 500,
+        M => 1000,
+        IV => 4,
+        IX => 9,
+        XL => 40,
+        XC => 90,
+        CD => 400,
+        CM => 900,
+        Compound(numerals) => numerals
+            .iter()
+            .map(into_i32)
+            .reduce(|left, right| left + right)
+            .map_or(0, |i| i),
+    }
+}
+
+fn into_string(numeral: &RomanNumeral) -> String {
+    match numeral {
+        I => "I".into(),
+        V => "V".into(),
+        X => "X".into(),
+        L => "L".into(),
+        C => "C".into(),
+        D => "D".into(),
+        M => "M".into(),
+        IV => "IV".into(),
+        IX => "IX".into(),
+        XL => "XL".into(),
+        XC => "XC".into(),
+        CD => "CD".into(),
+        CM => "CM".into(),
+        Compound(numerals) => numerals
+            .iter()
+            .map(into_string)
+            .reduce(|left, right| format!("{left}{right}"))
+            .map_or("".into(), |s| s),
+    }
+}
+
+fn flatten_numeral(numeral: &RomanNumeral, input: &str) -> RomanNumeralResult {
+    match numeral {
+        I | V | X | L | C | D | M | IV | IX | XL | XC | CD | CM => Ok(numeral.clone()),
+        Compound(numerals) => {
+            // let flattened: Vec<&RomanNumeral> = numerals.iter().map(|n| flatten_helper(n).clone()).collect();
+            let mut flattened: Vec<RomanNumeral> = Vec::new();
+            for n in numerals {
+                for x in flatten_helper(n) {
+                    flattened.push(x.clone())
+                }
+            }
+
+            let merged = merge_subtractive_forms(flattened);
+
+            if merged.is_empty() {
+                Err(RomanNumeralError::NotRomanNumeral(input.to_string()))
+            } else if merged.len() == 1 {
                 // If there is a single numeral already, just return it
-                Ok(flattened.pop().unwrap())
+                Ok(merged.first().unwrap().clone())
             } else {
                 // Must be a compound numeral
-                Ok(Compound(flattened))
+                Ok(Compound(merged))
             }
         }
     }
 }
 
-fn flatten_numeral(numeral: &RomanNumeral) -> Vec<RomanNumeral> {
+fn flatten_helper(numeral: &RomanNumeral) -> Vec<&RomanNumeral> {
     match numeral {
-        I | V | X | L | C | D | M | IV | IX | XL | XC | CD | CM => vec![numeral.clone()],
-        Compound(numerals) => numerals.iter().flat_map(flatten_numeral).collect(),
+        I | V | X | L | C | D | M | IV | IX | XL | XC | CD | CM => vec![numeral],
+        Compound(numerals) => {
+            let mut flattened: Vec<&RomanNumeral> = Vec::new();
+            for n in numerals {
+                for x in flatten_helper(n) {
+                    flattened.push(x)
+                }
+            }
+            flattened
+        }
     }
 }
 
@@ -416,6 +408,18 @@ mod tests {
                 panic!("Incorrect error type")
             }
         }
+    }
+
+    #[test]
+    fn flatten() {
+        // Not an actually-valid Roman numeral, just a complicated expression to check that flatten works
+        let nested = Compound(vec![
+            M,
+            Compound(vec![M, M, M, Compound(vec![M, M]), Compound(vec![M, M])]),
+            M,
+        ]);
+        let expected = Compound(vec![M, M, M, M, M, M, M, M, M]);
+        assert_eq!(flatten_numeral(&nested, "nested").unwrap(), expected);
     }
 
     #[test]
