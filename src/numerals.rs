@@ -10,8 +10,6 @@ pub enum RomanNumeralError {
     NotRomanNumeral(String),
     #[error("Compound numeral has errors")]
     NumeralsHasError(Vec<RomanNumeralError>),
-    #[error("Unknown Roman numeral error")]
-    Unknown,
 }
 
 pub type RomanNumeralResult = Result<RomanNumeral, RomanNumeralError>;
