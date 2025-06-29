@@ -3,6 +3,7 @@
 /// There are three main ways to use the module:
 /// - Parse from a `String` or `&str`, e.g. `let result = "MIV".parse::<RomanNumeral>();` or `let result: RomanNumeralResult = "MIV".parse();`
 /// - Convert from an `i32`, e.g. `let result: RomanNumeralResult = 1_044.try_into();`
+/// - Convert from a `RomanNumeral` to an `i32`, e.g. `let i: i32 = numeral.into();`
 /// - Display from a `RomanNumeral`
 use crate::numerals::RomanNumeral::*;
 use std::fmt;
@@ -296,7 +297,10 @@ fn flatten_numeral(numeral: &RomanNumeral, input: &str) -> RomanNumeralResult {
                 if let Some(next) = merged_iter.peek() {
                     // Check that the numerals are in order
                     if &numeral < next {
-                        return Err(RomanNumeralError::NumeralsOutOfOrder(format!("{} must come before {}", next, numeral)))
+                        return Err(RomanNumeralError::NumeralsOutOfOrder(format!(
+                            "{} must come before {}",
+                            next, numeral
+                        )));
                     }
                 }
             }
@@ -424,12 +428,15 @@ mod tests {
     fn out_of_order() {
         let e = "MIVM".parse::<RomanNumeral>().unwrap_err();
         match e {
-            RomanNumeralError::NumeralsOutOfOrder(value) if value == "M must come before IV".to_string() => {} // correct
+            RomanNumeralError::NumeralsOutOfOrder(value)
+                if value == "M must come before IV".to_string() => {} // correct
             RomanNumeralError::NumeralHasErrors(_) => panic!("Incorrect error type"),
             RomanNumeralError::NotRomanNumeral(value)
             | RomanNumeralError::ValueTooGreat(value)
             | RomanNumeralError::ValueTooSmall(value)
-            | RomanNumeralError::NumeralsOutOfOrder(value) => panic!("Incorrect error type {value}"),
+            | RomanNumeralError::NumeralsOutOfOrder(value) => {
+                panic!("Incorrect error type {value}")
+            }
         }
     }
 
