@@ -59,7 +59,7 @@ pub enum RomanNumeral {
 
 impl RomanNumeral {
     /// Add two RomanNumeral
-    fn plus(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
+    pub fn plus(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
         let lhs_i32: i32 = self.into();
         let rhs_i32: i32 = rhs.into();
         let sum = lhs_i32 + rhs_i32;
@@ -68,7 +68,7 @@ impl RomanNumeral {
     }
 
     /// Subtract rhs from self
-    fn minus(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
+    pub fn minus(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
         let lhs_i32: i32 = self.into();
         let rhs_i32: i32 = rhs.into();
         let sum = lhs_i32 - rhs_i32;
@@ -77,7 +77,7 @@ impl RomanNumeral {
     }
 
     /// Multiply two RomanNumeral
-    fn multiply(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
+    pub fn multiply(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
         let lhs_i32: i32 = self.into();
         let rhs_i32: i32 = rhs.into();
         let sum = lhs_i32 * rhs_i32;
@@ -86,7 +86,7 @@ impl RomanNumeral {
     }
 
     /// Divide two RomanNumeral, truncating any fractional part on division just like i32
-    fn divide(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
+    pub fn divide(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
         let lhs_i32: i32 = self.into();
         let rhs_i32: i32 = rhs.into();
         let sum = lhs_i32 / rhs_i32;
