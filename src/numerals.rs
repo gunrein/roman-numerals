@@ -1,10 +1,14 @@
 /// An implementation of standard form Roman numerals based on the definitions at
 /// https://en.wikipedia.org/wiki/Roman_numerals
-/// There are three main ways to use the module:
-/// - Parse from a `String` or `&str`, e.g. `let result = "MIV".parse::<RomanNumeral>();` or `let result: RomanNumeralResult = "MIV".parse();`
+/// There are several ways to use the module:
+/// - Parse from a `String` or `&str`, e.g. `let result = "MIV".parse::<RomanNumeral>();`
+///   or `let result: RomanNumeralResult = "MIV".parse();`
 /// - Convert from an `i32`, e.g. `let result: RomanNumeralResult = 1_044.try_into();`
 /// - Convert from a `RomanNumeral` to an `i32`, e.g. `let i: i32 = numeral.into();`
 /// - Display from a `RomanNumeral`
+/// - Add, subtract, multiply, and divide `RomanNumeral`, but keep in mind the narrow range of
+///   values representable as RomanNumeral (overflow is more common than with larger sets of
+///   integers)
 use crate::numerals::RomanNumeral::*;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -51,6 +55,44 @@ pub enum RomanNumeral {
     M,
     // Compound numeral
     Compound(Vec<RomanNumeral>),
+}
+
+impl RomanNumeral {
+    /// Add two RomanNumeral
+    fn plus(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
+        let lhs_i32: i32 = self.into();
+        let rhs_i32: i32 = rhs.into();
+        let sum = lhs_i32 + rhs_i32;
+
+        sum.try_into()
+    }
+
+    /// Subtract rhs from self
+    fn minus(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
+        let lhs_i32: i32 = self.into();
+        let rhs_i32: i32 = rhs.into();
+        let sum = lhs_i32 - rhs_i32;
+
+        sum.try_into()
+    }
+
+    /// Multiply two RomanNumeral
+    fn multiply(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
+        let lhs_i32: i32 = self.into();
+        let rhs_i32: i32 = rhs.into();
+        let sum = lhs_i32 * rhs_i32;
+
+        sum.try_into()
+    }
+
+    /// Divide two RomanNumeral, truncating any fractional part on division just like i32
+    fn divide(&self, rhs: &RomanNumeral) -> RomanNumeralResult {
+        let lhs_i32: i32 = self.into();
+        let rhs_i32: i32 = rhs.into();
+        let sum = lhs_i32 / rhs_i32;
+
+        sum.try_into()
+    }
 }
 
 impl FromStr for RomanNumeral {
@@ -338,6 +380,50 @@ fn flatten_helper(numeral: &RomanNumeral) -> Vec<&RomanNumeral> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn plus() {
+        let two: i32 = I.plus(&I).unwrap().into();
+        assert_eq!(two, 2);
+
+        let thousand: i32 = D.plus(&D).unwrap().into();
+        assert_eq!(thousand, 1_000);
+
+        check_4000_error(M.plus(&M).unwrap().plus(&M).unwrap().plus(&M).unwrap_err());
+    }
+
+    #[test]
+    fn minus() {
+        let three: i32 = IV.minus(&I).unwrap().into();
+        assert_eq!(three, 3);
+
+        let eight_hundred: i32 = CM.minus(&C).unwrap().into();
+        assert_eq!(eight_hundred, 800);
+
+        check_0_error(I.minus(&I).unwrap_err());
+    }
+
+    #[test]
+    fn multiply() {
+        let sixteen: i32 = IV.multiply(&IV).unwrap().into();
+        assert_eq!(sixteen, 16);
+
+        let four_hundred: i32 = C.multiply(&IV).unwrap().into();
+        assert_eq!(four_hundred, 400);
+
+        check_4000_error(M.multiply(&IV).unwrap_err());
+    }
+
+    #[test]
+    fn divide() {
+        let ten: i32 = C.divide(&X).unwrap().into();
+        assert_eq!(ten, 10);
+
+        let twenty_five: i32 = C.divide(&IV).unwrap().into();
+        assert_eq!(twenty_five, 25);
+
+        check_0_error(I.divide(&IV).unwrap_err());
+    }
+
     fn check_numeral(input: &str, expected_numeral: RomanNumeral, expected_int: i32) {
         let n = input.parse::<RomanNumeral>().unwrap();
         assert_eq!(n, expected_numeral);
@@ -443,28 +529,10 @@ mod tests {
     #[test]
     fn out_of_bounds() {
         let result: RomanNumeralResult = 0.try_into();
-        let e = result.unwrap_err();
-        match e {
-            RomanNumeralError::ValueTooSmall(value) if value == "0".to_string() => {} // correct
-            RomanNumeralError::ValueTooSmall(value) => panic!("Incorrect value {value}"),
-            RomanNumeralError::NumeralHasErrors(_)
-            | RomanNumeralError::ValueTooGreat(_)
-            | RomanNumeralError::NotRomanNumeral(_)
-            | RomanNumeralError::NumeralsOutOfOrder(_) => panic!("Incorrect error type"),
-        }
+        check_0_error(result.unwrap_err());
 
         let result: RomanNumeralResult = 4000.try_into();
-        let e = result.unwrap_err();
-        match e {
-            RomanNumeralError::ValueTooGreat(value) if value == "4000".to_string() => {} // correct
-            RomanNumeralError::ValueTooGreat(value) => panic!("Incorrect value {value}"),
-            RomanNumeralError::NumeralHasErrors(_)
-            | RomanNumeralError::ValueTooSmall(_)
-            | RomanNumeralError::NotRomanNumeral(_)
-            | RomanNumeralError::NumeralsOutOfOrder(_) => {
-                panic!("Incorrect error type")
-            }
-        }
+        check_4000_error(result.unwrap_err());
     }
 
     #[test]
@@ -482,6 +550,30 @@ mod tests {
     #[test]
     fn nested_compound_to_i32() {
         assert_eq!(i32::from(Compound(vec![Compound(vec![M, C, IX])])), 1109);
+    }
+
+    fn check_0_error(e: RomanNumeralError) {
+        match e {
+            RomanNumeralError::ValueTooSmall(value) if value == "0".to_string() => {} // correct
+            RomanNumeralError::ValueTooSmall(value) => panic!("Incorrect value {value}"),
+            RomanNumeralError::NumeralHasErrors(_)
+            | RomanNumeralError::ValueTooGreat(_)
+            | RomanNumeralError::NotRomanNumeral(_)
+            | RomanNumeralError::NumeralsOutOfOrder(_) => panic!("Incorrect error type"),
+        }
+    }
+
+    fn check_4000_error(e: RomanNumeralError) {
+        match e {
+            RomanNumeralError::ValueTooGreat(value) if value == "4000".to_string() => {} // correct
+            RomanNumeralError::ValueTooGreat(value) => panic!("Incorrect value {value}"),
+            RomanNumeralError::NumeralHasErrors(_)
+            | RomanNumeralError::ValueTooSmall(_)
+            | RomanNumeralError::NotRomanNumeral(_)
+            | RomanNumeralError::NumeralsOutOfOrder(_) => {
+                panic!("Incorrect error type")
+            }
+        }
     }
 
     fn check_empty_error(e: RomanNumeralError) {
