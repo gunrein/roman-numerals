@@ -5,7 +5,6 @@ use inquire::Text;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
-#[command(arg_required_else_help(true))]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -27,7 +26,8 @@ pub fn run_cli() {
     let cli = Cli::parse();
 
     match &cli.command {
-        None => {}
+        // Default to running the repl
+        None => repl(),
         Some(Commands::Convert { value }) => convert_or_print_error(value),
         Some(Commands::Repl) => repl(),
     }
