@@ -36,7 +36,7 @@ pub type RomanNumeralResult = Result<RomanNumeral, RomanNumeralError>;
 /// are both explicitly represented so that simplification can be done once.
 /// Compound numerals can be arbitrarily nested structurally but are flattened when parsing or
 /// converting into a single level Compound numeral.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum RomanNumeral {
     // Individual numerals and subtractive forms in order from the smallest value to the greatest
     // value. This order is important to the implementation.
